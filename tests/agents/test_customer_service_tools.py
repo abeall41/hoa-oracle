@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 from agents.shared.models import GovernanceSearchResult, HomeownerResponse, EscalationResult
 
+import app.services.llm  # noqa: F401 — must be imported before mocker.patch resolves it
+
 
 def _make_facts(results=None) -> str:
     return GovernanceSearchResult(
@@ -37,7 +39,7 @@ class TestFormatHomeownerResponse:
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value="Here is your answer about parking.")
         mocker.patch(
-            "agents.customer_service_mcp.tools.format_homeowner_response.LLMClient",
+            "app.services.llm.LLMClient",
             return_value=mock_llm,
         )
 
@@ -72,7 +74,7 @@ class TestFlagForEscalation:
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value="Board review needed.")
         mocker.patch(
-            "agents.customer_service_mcp.tools.flag_for_escalation.LLMClient",
+            "app.services.llm.LLMClient",
             return_value=mock_llm,
         )
 
@@ -87,7 +89,7 @@ class TestFlagForEscalation:
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value="Variance review needed.")
         mocker.patch(
-            "agents.customer_service_mcp.tools.flag_for_escalation.LLMClient",
+            "app.services.llm.LLMClient",
             return_value=mock_llm,
         )
 

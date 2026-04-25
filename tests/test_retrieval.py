@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
+import app.services.retriever  # noqa: F401 — must be imported before mocker.patch resolves it
+
 
 class TestGetTierAncestry:
     async def test_community_tier_returns_full_chain(self, mock_db_session):

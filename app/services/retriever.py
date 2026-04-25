@@ -44,17 +44,41 @@ async def vector_search(
     Always filters chunks from superseded documents when exclude_superseded=True.
     Uses HNSW index on chunk_embeddings.embedding.
     """
-    # TODO: implement pgvector cosine search with SQLAlchemy
-    # Query pattern:
-    #   SELECT dc.*, ce.embedding <=> :query_vec AS score
-    #   FROM document_chunks dc
-    #   JOIN chunk_embeddings ce ON ce.chunk_id = dc.id
-    #   JOIN documents d ON d.id = dc.document_id
-    #   WHERE d.tier_id = :tier_id
-    #     AND (:exclude_superseded = false OR d.superseded_by_id IS NULL)
-    #   ORDER BY score ASC
-    #   LIMIT :top_k
-    raise NotImplementedError("vector_search not yet implemented")
+    # Format the embedding as a PostgreSQL vector literal. The values are
+    # internally generated floats from the embedding model (not user input),
+    # so inline formatting is safe and avoids asyncpg codec registration for
+    # the vector type.
+    vec_literal = "[" + ",".join(str(v) for v in query_embedding) + "]"
+    superseded_clause = "AND d.superseded_by_id IS NULL" if exclude_superseded else ""
+
+    sql = text(f"""
+        SELECT
+            dc.id,
+            dc.content,
+            dc.section_ref,
+            dc.page_number,
+            d.title        AS document_title,
+            d.id           AS document_id,
+            d.effective_date::text AS effective_date,
+            (ce.embedding <=> '{vec_literal}'::vector) AS score
+        FROM document_chunks dc
+        JOIN chunk_embeddings ce ON ce.chunk_id = dc.id
+        JOIN documents d ON d.id = dc.document_id
+        WHERE d.tier_id = :tier_id
+          {superseded_clause}
+        ORDER BY score ASC
+        LIMIT :top_k
+    """)
+
+    own_session = db is None
+    session = AsyncSessionLocal() if own_session else db
+    try:
+        result = await session.execute(sql, {"tier_id": tier_id, "top_k": top_k})
+        rows = result.mappings().all()
+        return [dict(row) for row in rows]
+    finally:
+        if own_session:
+            await session.close()
 
 
 async def retrieve(query: str, community_tier_id: int, top_k: int = 8) -> list[dict]:

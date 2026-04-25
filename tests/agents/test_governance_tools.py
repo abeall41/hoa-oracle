@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, patch
 
 from agents.shared.models import GovernanceSearchResult, SectionResult, CompareResult
 
+import app.services.retriever  # noqa: F401 — must be imported before mocker.patch resolves it
+
 
 class TestSearchCommunityRules:
     async def test_returns_governance_search_result(self, mocker):

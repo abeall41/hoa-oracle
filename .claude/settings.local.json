@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import mcp; import sqlalchemy; import asyncpg; import pgvector; import anthropic; print\\('all ok'\\)\")",
+      "Bash(pip install *)"
+    ]
+  }
+}

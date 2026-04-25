@@ -2,6 +2,9 @@ import json
 import pytest
 from unittest.mock import AsyncMock, patch
 
+import app.orchestrator.router  # noqa: F401 — must be imported before mocker.patch resolves it
+import app.api.query             # noqa: F401
+
 
 class TestRouteQuery:
     async def test_homeowner_query_calls_both_agents(self, mocker):
