@@ -48,6 +48,20 @@ async def format_homeowner_response_impl(
     'board' is factual and citation-focused.
     Never queries documents or the database — receives facts as input only.
     """
+    try:
+        return await _format_response(query, compliance_facts, community_id, query_source)
+    except Exception as exc:
+        raise RuntimeError(
+            f"format_homeowner_response_impl failed ({type(exc).__name__}): {exc}"
+        ) from exc
+
+
+async def _format_response(
+    query: str,
+    compliance_facts: str,
+    community_id: int,
+    query_source: str,
+) -> HomeownerResponse:
     from app.config import settings
     from app.services.llm import LLMClient
 
