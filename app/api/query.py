@@ -79,7 +79,9 @@ async def handle_query(request: QueryRequest, db: AsyncSession = Depends(get_db)
         await db.commit()
 
         logger.info(
-            "Query completed in %dms", latency_ms,
+            "Query completed in %dms — response: %s",
+            latency_ms,
+            result.get("response_text", ""),
             extra={"latency_ms": latency_ms, "query_source": request.query_source},
         )
         return result
