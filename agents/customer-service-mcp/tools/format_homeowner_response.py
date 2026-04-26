@@ -1,10 +1,10 @@
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 from agents.shared.models import GovernanceSearchResult, HomeownerResponse
+from app.services.llm import OllamaUnavailableError
 
 
 _SYSTEM_PROMPT_HOMEOWNER = (
@@ -50,6 +50,8 @@ async def format_homeowner_response_impl(
     """
     try:
         return await _format_response(query, compliance_facts, community_id, query_source)
+    except OllamaUnavailableError as exc:
+        raise RuntimeError(f"LLM unavailable — check LLM_PROVIDER and connectivity: {exc}") from exc
     except Exception as exc:
         raise RuntimeError(
             f"format_homeowner_response_impl failed ({type(exc).__name__}): {exc}"

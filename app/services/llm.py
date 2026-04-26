@@ -75,7 +75,7 @@ class LLMClient:
                 )
                 response.raise_for_status()
                 return response.json()["message"]["content"]
-        except httpx.ConnectError as exc:
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise OllamaUnavailableError(
-                f"Ollama unreachable at {settings.ollama_base_url}"
+                f"Ollama unreachable at {settings.ollama_base_url}: {type(exc).__name__}"
             ) from exc
