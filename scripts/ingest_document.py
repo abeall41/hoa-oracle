@@ -96,10 +96,15 @@ async def ingest(file_path: str, tier_slug: str, title: str, doc_type: str) -> N
             await db.flush()
             print(f"Created document (id={doc.id})")
 
-        # Chunk and embed
+        # Chunk and embed in small batches to avoid OOM on low-RAM VMs
         chunks = chunk_text(ocr_result.text)
         texts = [c.content for c in chunks]
-        vectors = await embed_batch(texts)
+        EMBED_BATCH_SIZE = 16
+        vectors = []
+        for i in range(0, len(texts), EMBED_BATCH_SIZE):
+            batch_vectors = await embed_batch(texts[i:i + EMBED_BATCH_SIZE])
+            vectors.extend(batch_vectors)
+            print(f"  Embedded chunks {i + 1}–{min(i + EMBED_BATCH_SIZE, len(texts))} of {len(texts)}")
 
         for chunk_data, vector in zip(chunks, vectors):
             chunk = DocumentChunk(
