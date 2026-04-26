@@ -29,7 +29,8 @@ def _get_model():
         )
 
     from sentence_transformers import SentenceTransformer
-    _model = SentenceTransformer(settings.embedding_model)
+    # trust_remote_code=True is required by nomic-ai/nomic-embed-text-v1.5
+    _model = SentenceTransformer(settings.embedding_model, trust_remote_code=True)
     return _model
 
 

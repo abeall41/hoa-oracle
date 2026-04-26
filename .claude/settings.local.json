@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -c \"import mcp; import sqlalchemy; import asyncpg; import pgvector; import anthropic; print\\('all ok'\\)\")",
-      "Bash(pip install *)"
+      "Bash(pip install *)",
+      "Bash(python -m alembic upgrade head)",
+      "Bash(python scripts/seed_tiers.py)"
     ]
   }
 }
