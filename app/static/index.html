@@ -430,7 +430,7 @@
         return;
       }
       tbody.innerHTML = docs.map(d => `
-        <tr class="clickable" onclick="openTextViewer(${d.id}, ${JSON.stringify(d.title)})" title="Click to view extracted text">
+        <tr class="clickable" data-doc-id="${d.id}" title="Click to view extracted text">
           <td>${d.id}</td>
           <td>${d.title}</td>
           <td><span class="badge ${d.doc_type}">${d.doc_type || '—'}</span></td>
@@ -441,6 +441,11 @@
           <td>${d.page_count ?? '—'}</td>
         </tr>
       `).join('');
+
+      document.getElementById('doc-tbody').onclick = e => {
+        const row = e.target.closest('tr[data-doc-id]');
+        if (row) openTextViewer(parseInt(row.dataset.docId), row.cells[1].textContent);
+      };
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="6" style="color:#c53030">Error: ${err.message}</td></tr>`;
     }

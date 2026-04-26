@@ -8,10 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 class OCRResult:
-    def __init__(self, text: str, confidence: float, ocr_applied: bool) -> None:
+    def __init__(self, text: str, confidence: float, ocr_applied: bool, page_count: int = 0) -> None:
         self.text = text
         self.confidence = confidence
         self.ocr_applied = ocr_applied
+        self.page_count = page_count
 
 
 _MIN_CHARS_PER_PAGE = 200  # below this average => treat as scanned (marginal stamps only)
@@ -36,7 +37,7 @@ async def extract_text_from_pdf(file_bytes: bytes) -> OCRResult:
 
     avg_chars = len(combined) / num_pages
     if combined and avg_chars >= _MIN_CHARS_PER_PAGE:
-        return OCRResult(text=combined, confidence=1.0, ocr_applied=False)
+        return OCRResult(text=combined, confidence=1.0, ocr_applied=False, page_count=num_pages)
 
     if combined:
         logger.info(
@@ -47,7 +48,9 @@ async def extract_text_from_pdf(file_bytes: bytes) -> OCRResult:
         )
 
     # No meaningful text layer — fall back to Tesseract
-    return await _ocr_with_tesseract(file_bytes)
+    result = await _ocr_with_tesseract(file_bytes)
+    result.page_count = num_pages
+    return result
 
 
 async def extract_text_from_docx(file_bytes: bytes) -> OCRResult:

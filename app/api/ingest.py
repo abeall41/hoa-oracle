@@ -131,6 +131,7 @@ async def ingest_document(
                 mime_type=content_type,
                 ocr_processed=ocr_result.ocr_applied,
                 ocr_confidence=ocr_result.confidence if ocr_result.ocr_applied else None,
+                page_count=ocr_result.page_count or None,
                 raw_text=ocr_result.text,
                 effective_date=eff_date,
                 version_note=f"Amendment superseding document {existing.id}",
