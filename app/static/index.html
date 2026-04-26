@@ -273,7 +273,6 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Thinking…';
     resultBox.className = 'result-box';
-    resultBox.style.display = 'none';
     sourcesBox.style.display = 'none';
     metaBox.textContent = '';
 
@@ -370,7 +369,6 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Uploading…';
     resultBox.className = 'result-box';
-    resultBox.style.display = 'none';
 
     const form = new FormData();
     form.append('file', file);
