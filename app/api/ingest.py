@@ -64,10 +64,12 @@ async def ingest_document(
             identifier = tier_slug or str(tier_id)
             raise HTTPException(status_code=404, detail=f"Tier '{identifier}' not found")
 
+        resolved_tier_id = tier.id  # use resolved ID regardless of whether slug or id was passed
+
         # Check for existing non-superseded document with same identity
         existing_result = await db.execute(
             select(Document).where(
-                Document.tier_id == tier_id,
+                Document.tier_id == resolved_tier_id,
                 Document.title == title,
                 Document.doc_type == doc_type,
                 Document.superseded_by_id.is_(None),
@@ -80,7 +82,7 @@ async def ingest_document(
                 status_code=409,
                 detail=(
                     f"A current document '{title}' (type={doc_type}) already exists in tier "
-                    f"{tier_id} (id={existing.id}). "
+                    f"{resolved_tier_id} (id={existing.id}). "
                     "Re-submit with action='amendment' to create a new version or "
                     "action='correction' to overwrite the existing record."
                 ),
@@ -122,7 +124,7 @@ async def ingest_document(
         if existing is not None and action == "amendment":
             # Create new document row; mark the old one as superseded after we have the new ID
             doc = Document(
-                tier_id=tier_id,
+                tier_id=resolved_tier_id,
                 title=title,
                 doc_type=doc_type,
                 data_category=data_category,
@@ -164,7 +166,7 @@ async def ingest_document(
         else:
             # New document
             doc = Document(
-                tier_id=tier_id,
+                tier_id=resolved_tier_id,
                 title=title,
                 doc_type=doc_type,
                 data_category=data_category,
@@ -219,7 +221,7 @@ async def ingest_document(
     return IngestResponse(
         document_id=doc.id,
         title=title,
-        tier_id=tier_id,
+        tier_id=resolved_tier_id,
         chunks_created=len(chunk_rows),
         ocr_processed=ocr_result.ocr_applied,
         ocr_confidence=ocr_result.confidence if ocr_result.ocr_applied else None,
