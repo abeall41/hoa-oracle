@@ -19,7 +19,7 @@ class SearchCommunityRulesInput(BaseModel):
 class SearchResultItem(BaseModel):
     chunk_text: str
     document_title: str
-    section_ref: str
+    section_ref: str | None = None
     tier: str           # 'community' | 'county' | 'state'
     relevance_score: float
     document_id: int
@@ -62,7 +62,7 @@ class CompareRulesInput(BaseModel):
 
 class RuleItem(BaseModel):
     document_title: str
-    section_ref: str
+    section_ref: str | None = None
     text: str
     document_id: int
 
