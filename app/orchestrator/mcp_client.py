@@ -5,6 +5,7 @@ This preserves the subprocess boundary that makes agents independently
 deployable, testable, and replaceable without touching orchestrator code.
 """
 import json
+import sys
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -19,7 +20,7 @@ class MCPToolError(Exception):
 
 async def _invoke_tool(server_script: str, tool_name: str, arguments: dict) -> dict:
     server_params = StdioServerParameters(
-        command="python",
+        command=sys.executable,
         args=[server_script],
     )
     async with stdio_client(server_params) as (read, write):
