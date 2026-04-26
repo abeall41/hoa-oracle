@@ -204,6 +204,17 @@
     }
     tr.clickable { cursor: pointer; }
     tr.clickable:hover td { background: #ebf8ff; }
+    .delete-btn {
+      background: none;
+      border: 1px solid #feb2b2;
+      color: #c53030;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      line-height: 1;
+    }
+    .delete-btn:hover { background: #fff5f5; }
   </style>
 </head>
 <body>
@@ -257,7 +268,7 @@
         <table>
           <thead>
             <tr>
-              <th>ID</th><th>Title</th><th>Type</th><th>Tier</th><th>OCR</th><th>Pages</th>
+              <th>ID</th><th>Title</th><th>Type</th><th>Tier</th><th>OCR</th><th>Pages</th><th></th>
             </tr>
           </thead>
           <tbody id="doc-tbody"><tr><td colspan="6" style="color:#a0aec0">Loading…</td></tr></tbody>
@@ -439,10 +450,30 @@
             ? `Yes (${d.ocr_confidence != null ? Math.round(d.ocr_confidence * 100) + '%' : '?'})`
             : 'No'}</td>
           <td>${d.page_count ?? '—'}</td>
+          <td><button class="delete-btn" data-id="${d.id}" title="Delete document">✕</button></td>
         </tr>
       `).join('');
 
-      document.getElementById('doc-tbody').onclick = e => {
+      document.getElementById('doc-tbody').onclick = async e => {
+        const deleteBtn = e.target.closest('.delete-btn');
+        if (deleteBtn) {
+          e.stopPropagation();
+          const id = parseInt(deleteBtn.dataset.id);
+          const row = deleteBtn.closest('tr');
+          const title = row.cells[1].textContent;
+          if (!confirm(`Delete "${title}" and all its chunks?\nThis cannot be undone.`)) return;
+          deleteBtn.textContent = '…';
+          deleteBtn.disabled = true;
+          const resp = await fetch(`/documents/${id}`, { method: 'DELETE' });
+          if (resp.ok) {
+            row.remove();
+          } else {
+            deleteBtn.textContent = '✕';
+            deleteBtn.disabled = false;
+            alert('Delete failed — check logs.');
+          }
+          return;
+        }
         const row = e.target.closest('tr[data-doc-id]');
         if (row) openTextViewer(parseInt(row.dataset.docId), row.cells[1].textContent);
       };

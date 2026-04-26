@@ -1,8 +1,21 @@
 import logging
+import re
 from pathlib import Path
 
 from app.config import settings
 from app.services.llm import LLMClient, OllamaUnavailableError
+
+# Matches rotated court-stamp text that Montgomery County land records systems
+# print on the left margin of every page. Tesseract picks these up as running
+# text; strip them before storing or chunking.
+_COURT_STAMP_RE = re.compile(
+    r"\S+\.\s*Date available \d{2}/\d{2}/\d{4}\..*?PAGE:\s*\d+\s*",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _strip_court_stamps(text: str) -> str:
+    return _COURT_STAMP_RE.sub("", text).strip()
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +50,7 @@ async def extract_text_from_pdf(file_bytes: bytes) -> OCRResult:
 
     avg_chars = len(combined) / num_pages
     if combined and avg_chars >= _MIN_CHARS_PER_PAGE:
-        return OCRResult(text=combined, confidence=1.0, ocr_applied=False, page_count=num_pages)
+        return OCRResult(text=_strip_court_stamps(combined), confidence=1.0, ocr_applied=False, page_count=num_pages)
 
     if combined:
         logger.info(
@@ -64,8 +77,13 @@ async def extract_text_from_docx(file_bytes: bytes) -> OCRResult:
 
 
 async def _ocr_with_tesseract(file_bytes: bytes) -> OCRResult:
-    """Run Tesseract OCR on PDF bytes. Runs Ollama cleanup if confidence is low."""
-    import io
+    """
+    Run Tesseract OCR on PDF bytes.
+    Uses image_to_string (psm 1) to preserve paragraph structure and section headings.
+    Uses image_to_data separately to compute confidence.
+    Strips court-stamp margin text before storing.
+    Runs Ollama cleanup if confidence is below threshold.
+    """
     import fitz
     import pytesseract
     from PIL import Image
@@ -77,16 +95,19 @@ async def _ocr_with_tesseract(file_bytes: bytes) -> OCRResult:
     for page in doc:
         pix = page.get_pixmap(dpi=300)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-        page_text = " ".join(
-            w for w in data["text"] if w.strip()
-        )
-        page_confs = [c for c in data["conf"] if c != -1]
-        if page_confs:
-            confidences.extend(page_confs)
+
+        # image_to_string with auto page segmentation preserves newlines,
+        # paragraph breaks, and heading structure that image_to_data flattens.
+        page_text = pytesseract.image_to_string(img, config="--psm 1")
+        page_text = _strip_court_stamps(page_text)
         all_text.append(page_text)
 
-    raw_text = "\n".join(all_text)
+        # image_to_data for per-word confidence scores only
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        page_confs = [c for c in data["conf"] if isinstance(c, (int, float)) and c != -1]
+        confidences.extend(page_confs)
+
+    raw_text = "\n\n".join(all_text)  # double newline between pages
     mean_confidence = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0
 
     if mean_confidence < settings.ocr_confidence_threshold:

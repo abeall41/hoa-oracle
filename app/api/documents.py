@@ -68,6 +68,23 @@ async def get_document(
     return DocumentSummary(**dict(row))
 
 
+@router.delete("/{document_id}", status_code=204)
+async def delete_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a document and all its chunks/embeddings (cascade)."""
+    result = await db.execute(
+        select(Document.id).where(Document.id == document_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    await db.execute(
+        Document.__table__.delete().where(Document.id == document_id)
+    )
+    await db.commit()
+
+
 @router.get("/{document_id}/text")
 async def get_document_text(
     document_id: int,
