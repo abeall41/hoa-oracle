@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOA Oracle</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f4f5f7;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 600; }
+    header span { font-size: 0.85rem; color: #a0aec0; }
+
+    nav {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 0;
+    }
+    nav button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: #4a5568;
+      border-bottom: 3px solid transparent;
+    }
+    nav button.active {
+      color: #1a1a2e;
+      border-bottom-color: #4299e1;
+      font-weight: 600;
+    }
+    nav button:hover:not(.active) { background: #f7fafc; }
+
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #2d3748; }
+
+    label { display: block; font-size: 0.85rem; font-weight: 500; color: #4a5568; margin-bottom: 0.3rem; }
+    input[type="text"], input[type="file"], select, textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      background: #fff;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+    button.primary {
+      background: #4299e1;
+      color: #fff;
+      border: none;
+      padding: 0.6rem 1.4rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    button.primary:hover { background: #3182ce; }
+    button.primary:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .result-box {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      display: none;
+    }
+    .result-box.visible { display: block; }
+    .result-box.error { background: #fff5f5; border-color: #feb2b2; color: #c53030; }
+    .result-box.success { background: #f0fff4; border-color: #9ae6b4; }
+
+    .sources {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: #718096;
+    }
+    .sources span {
+      display: inline-block;
+      background: #edf2f7;
+      border-radius: 4px;
+      padding: 0.15rem 0.5rem;
+      margin: 0.2rem 0.2rem 0 0;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 99px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.community { background: #bee3f8; color: #2b6cb0; }
+    .badge.county    { background: #fefcbf; color: #744210; }
+    .badge.state     { background: #c6f6d5; color: #276749; }
+    .badge.law       { background: #e9d8fd; color: #553c9a; }
+    .badge.bylaws    { background: #feebc8; color: #7b341e; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; color: #718096; font-weight: 600;
+         border-bottom: 2px solid #e2e8f0; }
+    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+    tr:hover td { background: #f7fafc; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .meta { font-size: 0.78rem; color: #a0aec0; margin-top: 0.4rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>HOA Oracle</h1>
+  <span>Crest of Wickford — Compliance Intelligence</span>
+</header>
+
+<nav>
+  <button class="active" onclick="showPanel('query')">Ask a Question</button>
+  <button onclick="showPanel('documents')">Documents</button>
+  <button onclick="showPanel('ingest')">Upload Document</button>
+</nav>
+
+<main>
+
+  <!-- QUERY PANEL -->
+  <div id="panel-query" class="panel active">
+    <div class="card">
+      <h2>Ask a Compliance Question</h2>
+      <label>Your question</label>
+      <textarea id="q-text" placeholder="e.g. Can I install a basketball hoop in my driveway?"></textarea>
+      <div class="row">
+        <div>
+          <label>Respondent type</label>
+          <select id="q-source">
+            <option value="homeowner">Homeowner — plain language</option>
+            <option value="board">Board — cited rules</option>
+          </select>
+        </div>
+        <div>
+          <label>Community ID</label>
+          <input type="text" id="q-community" value="3">
+        </div>
+      </div>
+      <button class="primary" id="q-btn" onclick="submitQuery()">Ask</button>
+
+      <div id="q-result" class="result-box"></div>
+      <div id="q-sources" class="sources" style="display:none"></div>
+      <div id="q-meta" class="meta"></div>
+    </div>
+  </div>
+
+  <!-- DOCUMENTS PANEL -->
+  <div id="panel-documents" class="panel">
+    <div class="card">
+      <h2>Ingested Documents</h2>
+      <button class="primary" onclick="loadDocuments()" style="margin-bottom:1rem">Refresh</button>
+      <div id="doc-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Title</th><th>Type</th><th>Tier</th><th>OCR</th><th>Pages</th>
+            </tr>
+          </thead>
+          <tbody id="doc-tbody"><tr><td colspan="6" style="color:#a0aec0">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- INGEST PANEL -->
+  <div id="panel-ingest" class="panel">
+    <div class="card">
+      <h2>Upload a Document</h2>
+      <label>File (PDF or DOCX)</label>
+      <input type="file" id="i-file" accept=".pdf,.docx">
+      <div class="row">
+        <div>
+          <label>Title</label>
+          <input type="text" id="i-title" placeholder="e.g. Crest of Wickford Bylaws">
+        </div>
+        <div>
+          <label>Document type</label>
+          <input type="text" id="i-doctype" placeholder="e.g. bylaws, declaration, law">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Tier slug</label>
+          <select id="i-tier">
+            <option value="wickford">wickford (community)</option>
+            <option value="montgomery-county">montgomery-county (county)</option>
+            <option value="maryland">maryland (state)</option>
+          </select>
+        </div>
+        <div>
+          <label>Action (if document exists)</label>
+          <select id="i-action">
+            <option value="amendment">amendment — new version</option>
+            <option value="correction">correction — overwrite</option>
+          </select>
+        </div>
+      </div>
+      <button class="primary" id="i-btn" onclick="submitIngest()">Upload</button>
+      <div id="i-result" class="result-box"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  function showPanel(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    event.target.classList.add('active');
+    if (name === 'documents') loadDocuments();
+  }
+
+  // ── QUERY ──────────────────────────────────────────────────────────────────
+  async function submitQuery() {
+    const text = document.getElementById('q-text').value.trim();
+    if (!text) return;
+
+    const btn = document.getElementById('q-btn');
+    const resultBox = document.getElementById('q-result');
+    const sourcesBox = document.getElementById('q-sources');
+    const metaBox = document.getElementById('q-meta');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Thinking…';
+    resultBox.className = 'result-box';
+    resultBox.style.display = 'none';
+    sourcesBox.style.display = 'none';
+    metaBox.textContent = '';
+
+    const t0 = Date.now();
+    try {
+      const resp = await fetch('/query/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: text,
+          query_source: document.getElementById('q-source').value,
+          community_id: parseInt(document.getElementById('q-community').value),
+          session_id: 'ui-' + Date.now(),
+        }),
+      });
+      const elapsed = Date.now() - t0;
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        resultBox.className = 'result-box error visible';
+        resultBox.textContent = data.detail || JSON.stringify(data, null, 2);
+      } else {
+        resultBox.className = 'result-box success visible';
+        resultBox.textContent = data.response_text || JSON.stringify(data, null, 2);
+
+        if (data.sources_cited && data.sources_cited.length) {
+          sourcesBox.style.display = 'block';
+          sourcesBox.innerHTML = '<strong>Sources:</strong> ' +
+            data.sources_cited.map(s => `<span>${s}</span>`).join('');
+        }
+        const flags = [];
+        if (data.alternatives_suggested) flags.push('alternatives suggested');
+        if (data.escalation_recommended) flags.push('⚠ escalation recommended');
+        metaBox.textContent = `${elapsed}ms` + (flags.length ? ' · ' + flags.join(' · ') : '');
+      }
+    } catch (err) {
+      resultBox.className = 'result-box error visible';
+      resultBox.textContent = 'Network error: ' + err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+
+  document.getElementById('q-text').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitQuery();
+  });
+
+  // ── DOCUMENTS ──────────────────────────────────────────────────────────────
+  const TIER_LABELS = { 1: 'Maryland', 2: 'Montgomery Co.', 3: 'Wickford' };
+
+  async function loadDocuments() {
+    const tbody = document.getElementById('doc-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" style="color:#a0aec0">Loading…</td></tr>';
+    try {
+      const resp = await fetch('/documents/');
+      const docs = await resp.json();
+      if (!docs.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:#a0aec0">No documents ingested yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = docs.map(d => `
+        <tr>
+          <td>${d.id}</td>
+          <td>${d.title}</td>
+          <td><span class="badge ${d.doc_type}">${d.doc_type || '—'}</span></td>
+          <td>${TIER_LABELS[d.tier_id] || 'Tier ' + d.tier_id}</td>
+          <td>${d.ocr_processed
+            ? `Yes (${d.ocr_confidence != null ? Math.round(d.ocr_confidence * 100) + '%' : '?'})`
+            : 'No'}</td>
+          <td>${d.page_count ?? '—'}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:#c53030">Error: ${err.message}</td></tr>`;
+    }
+  }
+
+  // ── INGEST ─────────────────────────────────────────────────────────────────
+  async function submitIngest() {
+    const file = document.getElementById('i-file').files[0];
+    const title = document.getElementById('i-title').value.trim();
+    const docType = document.getElementById('i-doctype').value.trim();
+    const tierSlug = document.getElementById('i-tier').value;
+    const action = document.getElementById('i-action').value;
+
+    if (!file || !title || !docType) {
+      alert('Please fill in file, title, and document type.');
+      return;
+    }
+
+    const btn = document.getElementById('i-btn');
+    const resultBox = document.getElementById('i-result');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Uploading…';
+    resultBox.className = 'result-box';
+    resultBox.style.display = 'none';
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    form.append('doc_type', docType);
+    form.append('tier_slug', tierSlug);
+    form.append('action', action);
+
+    try {
+      const resp = await fetch('/ingest/', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        resultBox.className = 'result-box error visible';
+        resultBox.textContent = data.detail || JSON.stringify(data, null, 2);
+      } else {
+        resultBox.className = 'result-box success visible';
+        resultBox.textContent = `✓ ${data.message || JSON.stringify(data, null, 2)}`;
+      }
+    } catch (err) {
+      resultBox.className = 'result-box error visible';
+      resultBox.textContent = 'Network error: ' + err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Upload';
+  }
+</script>
+</body>
+</html>
