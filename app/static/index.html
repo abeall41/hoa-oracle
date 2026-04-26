@@ -384,11 +384,14 @@
       });
       const data = await resp.json();
       if (!resp.ok) {
+        const detail = typeof data.detail === 'string'
+          ? data.detail
+          : JSON.stringify(data.detail ?? data, null, 2);
         resultBox.className = 'result-box error visible';
-        resultBox.textContent = data.detail || JSON.stringify(data, null, 2);
+        resultBox.textContent = detail;
       } else {
         resultBox.className = 'result-box success visible';
-        resultBox.textContent = `✓ ${data.message || JSON.stringify(data, null, 2)}`;
+        resultBox.textContent = `✓ Ingested "${data.title}" — ${data.chunks_created} chunks (doc id=${data.document_id})`;
       }
     } catch (err) {
       resultBox.className = 'result-box error visible';

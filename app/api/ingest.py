@@ -32,27 +32,37 @@ class IngestResponse(BaseModel):
 @router.post("/", response_model=IngestResponse)
 async def ingest_document(
     file: UploadFile,
-    tier_id: int = Form(...),
     title: str = Form(...),
     doc_type: str = Form(...),
+    tier_id: int | None = Form(None),
+    tier_slug: str | None = Form(None),
     effective_date: str | None = Form(None),   # ISO date string YYYY-MM-DD
     data_category: str = Form("compliance"),
     # 'amendment' creates a new version row; 'correction' overwrites the existing record.
     # Required only when a non-superseded document with the same tier+title+doc_type exists.
     action: str | None = Form(None),
 ) -> IngestResponse:
+    if tier_id is None and tier_slug is None:
+        raise HTTPException(status_code=422, detail="Provide either tier_id or tier_slug")
+
     file_bytes = await file.read()
     filename = file.filename or "upload"
     content_type = file.content_type or "application/octet-stream"
 
     async with AsyncSessionLocal() as db:
-        # Resolve tier for MinIO path construction
-        tier_result = await db.execute(
-            select(KnowledgeTier).where(KnowledgeTier.id == tier_id)
-        )
+        # Resolve tier by slug or ID
+        if tier_slug:
+            tier_result = await db.execute(
+                select(KnowledgeTier).where(KnowledgeTier.slug == tier_slug)
+            )
+        else:
+            tier_result = await db.execute(
+                select(KnowledgeTier).where(KnowledgeTier.id == tier_id)
+            )
         tier = tier_result.scalar_one_or_none()
         if tier is None:
-            raise HTTPException(status_code=404, detail=f"Tier {tier_id} not found")
+            identifier = tier_slug or str(tier_id)
+            raise HTTPException(status_code=404, detail=f"Tier '{identifier}' not found")
 
         # Check for existing non-superseded document with same identity
         existing_result = await db.execute(
