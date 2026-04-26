@@ -81,11 +81,21 @@ async def vector_search(
             await session.close()
 
 
+# Multiplied against cosine distance before ranking — lower = ranked higher.
+# Community results get a 25% boost so local rules beat equivalent state law.
+_TIER_BOOST: dict[str, float] = {
+    "community": 0.75,
+    "county":    0.90,
+    "state":     1.00,
+}
+
+
 async def retrieve(query: str, community_tier_id: int, top_k: int = 8) -> list[dict]:
     """
     Retrieve relevant chunks across the tier hierarchy.
-    Searches community → county → state, merges and deduplicates results,
-    returns top_k overall ranked by relevance score.
+    Searches community → county → state, merges results, returns top_k ranked by
+    tier-boosted cosine distance (lower raw score = more similar; community results
+    receive a 0.75x multiplier so local rules outrank equivalent state/county docs).
     Filters out chunks from superseded documents automatically.
     """
     query_embedding = await embed(query)
@@ -93,6 +103,7 @@ async def retrieve(query: str, community_tier_id: int, top_k: int = 8) -> list[d
 
     results = []
     for tier in tiers:
+        boost = _TIER_BOOST.get(tier.tier, 1.0)
         chunks = await vector_search(
             query_embedding,
             tier_id=tier.id,
@@ -100,11 +111,30 @@ async def retrieve(query: str, community_tier_id: int, top_k: int = 8) -> list[d
             exclude_superseded=True,
         )
         for chunk in chunks:
+            raw_score = chunk["score"]
             results.append({
                 "chunk": chunk,
                 "tier": tier.name,
                 "tier_type": tier.tier,
-                "score": chunk["score"],
+                "score": raw_score,
+                "ranked_score": raw_score * boost,  # boosted score used only for ordering
             })
 
-    return sorted(results, key=lambda x: x["score"], reverse=True)[:top_k]
+    # Sort ascending by ranked_score (lower = more relevant after tier boost applied)
+    ranked = sorted(results, key=lambda x: x["ranked_score"])[:top_k]
+
+    logger.debug(
+        "retrieve: query=%r tiers=%s raw_candidates=%d returning=%d",
+        query[:80],
+        [t.name for t in tiers],
+        len(results),
+        len(ranked),
+    )
+    for i, r in enumerate(ranked):
+        logger.debug(
+            "  result[%d] tier=%s score=%.3f boosted=%.3f doc=%r section=%r",
+            i, r["tier_type"], r["score"], r["ranked_score"],
+            r["chunk"].get("document_title", ""), r["chunk"].get("section_ref", ""),
+        )
+
+    return ranked

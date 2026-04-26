@@ -471,8 +471,9 @@
     btn.innerHTML = '<span class="spinner"></span>Uploading…';
     resultBox.className = 'result-box';
 
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', file, safeName);
     form.append('title', title);
     form.append('doc_type', docType);
     form.append('tier_slug', tierSlug);
