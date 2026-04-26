@@ -41,5 +41,17 @@ class Settings(BaseSettings):
     # OCR
     ocr_confidence_threshold: float = 0.70
 
+    # Query decomposition — max sub-queries to run in parallel.
+    # Each search spawns a subprocess that loads the embedding model (~500MB RAM).
+    # On a 4GB VM, 2 is safe; raise to 3 only if memory headroom is confirmed.
+    max_concurrent_searches: int = 2
+
+    # Accuracy pipeline — Gate 1: retrieval confidence threshold.
+    # Cosine distance; lower = more similar. Results whose best chunk score exceeds
+    # this value indicate the index has no reliable match for the query. Synthesis
+    # is skipped and a canned "could not find" response is returned.
+    # Tune by monitoring query_log: scores 0.35-0.44 = good, 0.45+ = unreliable.
+    retrieval_gate_threshold: float = 0.46
+
 
 settings = Settings()

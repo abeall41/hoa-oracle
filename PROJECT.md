@@ -131,14 +131,21 @@ The orchestrator is the routing brain. For a homeowner query like "Can I install
 
 ## Roadmap
 
-### Phase 1 — Compliance MVP (Months 1–3)
-Single community proof of concept. Governing document ingestion, OCR, Claude integration, basic compliance Q&A via CLI. Validated against one real community (Crest of Wickford HOA). Architecture deliberately built to be data-type agnostic for future operational data expansion. Runs on existing homelab infrastructure — two Debian 13 KVM VMs on Proxmox, with LLM inference on an existing GPU-equipped desktop (Gaasp). No greenfield hardware required.
+### Phase 1 — Compliance MVP ✅ (Months 1–3)
+Single community proof of concept. Full ingestion pipeline (PDF/DOCX → OCR → chunk → embed), hierarchical vector retrieval, Claude integration, compliance Q&A. Validated against Crest of Wickford HOA governing documents, Maryland Condo Act, and Montgomery County ordinances. Runs on homelab (two Debian 13 VMs on Proxmox, LLM on existing GPU desktop).
+
+**Delivered beyond original Phase 1 scope:**
+- Web UI (query, document management, upload) — originally Phase 2
+- MCP server layer fully finalized with both agents production-ready — originally Phase 2
+- Query decomposition via Ollama: verbose/multi-part queries rewritten into focused search terms before vector search
+- 3-gate accuracy pipeline: retrieval confidence threshold (Gate 1), constrained synthesis prompts (Gate 2), citation grounding check + retry (Gate 3)
+- Structured JSON logging, query_log wiring, systemd service
 
 ### Phase 2 — Platform Foundation (Months 3–6)
-Multi-tenant architecture. Basic web UI. Segmented community databases. MCP server layer finalized. Email drafting automation. Begin onboarding 2–3 beta communities.
+Multi-community support with authentication, community-scoped access control, and admin tooling. Email drafting automation. Onboard 2–3 beta communities. Switch to Claude as production LLM. Admin dashboard with query log access and accuracy monitoring.
 
 ### Phase 3 — Operational Data Layer (Months 6–9)
-Expand beyond documents into operational data: email ingestion, work order indexing, invoice processing. Policy scraping and monitoring for law changes. Management report generation from operational data. County-level database buildout.
+Expand beyond compliance documents into operational data: email ingestion, work order indexing, invoice processing. Policy monitoring for Maryland law changes. Management report generation. Add `financial-mcp`, `communications-mcp`, and `maintenance-mcp` agents. County-level database buildout.
 
 ### Phase 4 — Commercial Launch (Months 9–12)
 Pricing model live ($5,000–$10,000/community/year). Management company partnerships. Owner-facing portal. Financial anomaly detection and enforcement consistency tools. Maryland-wide county coverage.

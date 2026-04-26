@@ -1,5 +1,120 @@
 # hoa-oracle — Phase 1 Technical Implementation Plan
 
+---
+
+## Current Status — 2026-04-26
+
+### ✅ Completed
+
+**Infrastructure**
+- Both VMs provisioned and running (hoa-api: 192.168.169.195, hoa-db: 192.168.169.194)
+- PostgreSQL 16 + pgvector installed and migrated on hoa-db
+- MinIO running on hoa-db, bucket created, hoa-api connectivity confirmed
+- Ollama (`gemma3:4b`) confirmed running on Gaasp (192.168.169.110)
+- FastAPI app running as systemd service (`hoa-oracle.service`) on hoa-api, auto-restarts on failure
+
+**Core Pipeline**
+- Full ingestion pipeline: PDF/DOCX → OCR → chunk → embed → MinIO + PostgreSQL
+- OCR improvements: `image_to_string` preserves document structure; sparse text threshold (200 chars/page avg) forces Tesseract on court-stamp-only PDFs; court stamp regex stripping applied to both text-layer and Tesseract paths
+- Embedding model pinned to `nomic-ai/nomic-embed-text-v1.5` v5.4.1 with `local_files_only=True`; version mismatch halts ingestion and logs error
+- Batch embedding (16 chunks/batch) prevents OOM on low-RAM VM for large documents
+- Hierarchical retrieval with tier boost: community 0.75x, county 0.90x, state 1.0x — ensures local rules rank above equivalent state law; sort direction bug fixed (was reverse=True, should be ascending cosine distance)
+- Document versioning: amendment/correction flow implemented; superseded_by_id filter applied in all retrieval paths
+
+**Agents & Orchestration**
+- `governance-mcp`: all 3 tools implemented and working as subprocess (search_community_rules, get_section, compare_rules)
+- `customer-service-mcp`: both tools implemented (format_homeowner_response, flag_for_escalation)
+- Dual response tone: `query_source="homeowner"` (warm, advisory, 800 tokens) vs `query_source="board"` (factual, citation-heavy, 2000 tokens) — both paths go through format_homeowner_response with tone parameter
+- MCP subprocess boundary confirmed: `sys.executable` used for subprocess launch (fixes PATH issue under systemd)
+- Orchestrator routes both board and homeowner queries through full two-agent pipeline
+- Input sanitization: 4 injection patterns blocked, 2000-char truncation
+
+**Query Intelligence** *(added beyond original spec)*
+- Query decomposition via Ollama: verbose or multi-part user input is rewritten into 1–6 focused search terms before vector search, improving retrieval on conversational queries
+- Parallel sub-query execution via `asyncio.gather` with semaphore-bounded concurrency (`MAX_CONCURRENT_SEARCHES=2`) to prevent OOM on low-RAM VM
+- Result merging and deduplication across sub-queries: best relevance score per unique chunk, capped at 20 results; synthesis LLM receives original query + sub-query list for context-aware multi-part answers
+- Graceful fallback: if Ollama is unavailable for decomposition, pipeline falls back to original query with zero user impact
+
+**Accuracy Pipeline** *(added beyond original spec)*
+- **Gate 1 — Retrieval confidence threshold** (`retrieval_gate_threshold=0.46`): if the best chunk score exceeds the threshold, synthesis is skipped entirely and a canned "couldn't find reliable information" response is returned; no hallucination risk from bad retrieval
+- **Gate 2 — Constrained synthesis prompts**: both homeowner and board prompts include explicit citation constraint — "quote verbatim before interpreting; cite only sections present in the Compliance facts"
+- **Gate 3 — Citation grounding check + conditional retry**: after synthesis, regex extracts all Section/Article references from the response and verifies each appears in the retrieved chunk corpus; 2+ ungrounded citations triggers one retry with explicit correction instruction; if retry still fails, disclaimer is appended to response
+- `app/services/faithfulness.py`: standalone citation extraction and grounding check module — deterministic, no LLM call, instant
+
+**Observability**
+- Structured JSON logging to `logs/app.log` (rotating, 10MB × 7 files)
+- Per-agent tool logging: inputs (truncated), chunk-level retrieval results (DEBUG), LLM response (INFO)
+- `query_log` table wired: every query records text, response, model, latency_ms, success, error
+- Stdout logging for journald (`journalctl -u hoa-oracle`)
+
+**Web UI** *(added beyond original spec)*
+- 3-panel FastAPI-served HTML UI at port 8000: Ask a Question, Documents, Upload Document
+- Document text viewer (modal, click any row)
+- Document delete button with confirmation
+- Tier slug resolution in upload form (no integer IDs required)
+- Mobile-compatible
+
+**Code Quality**
+- Agent README.md files completed: governance-mcp and customer-service-mcp both document tool contracts, accuracy pipeline behavior, tone guidelines, and preemption rules
+- 67 unit/contract tests passing; integration tests correctly excluded from default run
+- Contract test (`test_shared_models.py`) confirms all shared models round-trip through JSON
+
+---
+
+### 🔲 Remaining for Phase 1 Completion
+
+**Documents — still needed**
+- Montgomery County relevant ordinances at county tier (not yet ingested)
+- Confirm Maryland HOA Act §11B is indexed at state tier (MD Condominium Act ingested; verify HOA Act is separate and present)
+
+**Validation — not yet formally run**
+- 10 board-style queries: verify sourced responses, correct section citations, Gate 1/3 behavior observable in logs
+- 10 homeowner-style queries: verify warm tone, accurate rules, alternatives suggested where applicable
+- `compare_rules` with `potential_conflicts=true` — preemption hierarchy applied correctly in response
+- Superseded document filter: re-ingest one document as amendment, confirm old chunks absent from all query results
+- Embedding model version mismatch: confirm halts ingestion without crashing server
+- OCR cleanup Ollama path: confirm triggers below 0.70 confidence threshold
+
+> **⚠️ MAJOR TODO — Gate 1 threshold calibration**
+> `RETRIEVAL_GATE_THRESHOLD` is currently set to `0.46` based on a small initial sample.
+> This value must be validated against real query traffic before Phase 2.
+> Requires reviewing `query_log` retrieval scores across 20+ representative queries
+> and adjusting the threshold so Gate 1 blocks genuinely low-confidence retrievals
+> without refusing answerable questions.
+> **Blocked on: easy access to `query_log` data from hoa-db.**
+> Also review Gate 3 retry rate — if retries are firing frequently, Gate 2 prompt
+> constraint may need tightening before the threshold is correct.
+
+**Performance**
+- Query latency p50/p95: decomposition adds ~3–5s; parallel search keeps vector time flat; total expected ~25–35s on Ollama
+- Benchmark with `LLM_PROVIDER=claude`: switch, run same 10 queries, compare quality and latency
+- Gate 3 retry latency: measure how often retry fires and average latency impact
+
+**Infrastructure — pending**
+- Caddy reverse proxy on Worker1 (`hoa.lan` site block) — not yet configured
+- Uptime Kuma monitors on Worker2 (hoa-api /health, hoa-db PostgreSQL port, MinIO health) — not yet added
+
+**Tests — pending**
+- Retrieval regression test (`test_retrieval_regression.py`): 10 fixed query/expected-source pairs against seeded dataset; must pass before Phase 2
+
+---
+
+### ⚠️ Deviations from Original Spec
+
+| Item | Original | Actual |
+|------|----------|--------|
+| Board query path | Governance only, raw results | Routes through format_homeowner_response with `query_source="board"` for formatted citation-heavy response |
+| Retrieval ranking | Raw cosine distance merge | Tier-boosted ranking (community 0.75x, county 0.90x) + sort direction fix |
+| Query processing | Single query → vector search | Ollama decomposition → N parallel sub-queries → merged results |
+| Accuracy / hallucination | Not specified | 3-gate accuracy pipeline: retrieval threshold, constrained prompts, citation grounding check + retry |
+| Web UI | Not in Phase 1 | Added: 3-panel HTML UI for query, document management, upload |
+| Logging | Not specified | Added: structured JSON file logging + query_log wiring |
+| systemd service | Not specified | Added: auto-start service unit |
+| OCR structure | Basic word-join | Upgraded to `image_to_string` + court stamp stripping |
+| `format_homeowner_response` signature | 3 params | Added `query_source` + `sub_queries` params |
+
+---
+
 ## Objective
 
 Build a working single-community document intelligence system that can ingest governing documents, index them with embeddings, and answer natural language queries against them using Claude. Validate on Wickford HOA documents and a base set of Maryland state HOA statutes.

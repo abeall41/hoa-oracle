@@ -4,8 +4,17 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 from agents.shared.models import GovernanceSearchResult, HomeownerResponse
+from app.services.faithfulness import UNVERIFIED_DISCLAIMER, check_citation_grounding
 from app.services.llm import OllamaUnavailableError
 
+# Gate 2: both prompts explicitly constrain citations to source material.
+# "Quote before interpret" pattern reduces hallucination at generation time.
+_CITATION_CONSTRAINT = (
+    " When referencing a rule, quote the relevant passage verbatim from the "
+    "Compliance facts before interpreting it. Cite only section references that "
+    "appear in the Compliance facts provided. Do not reference any section, article, "
+    "or rule not present in the sources."
+)
 
 _SYSTEM_PROMPT_HOMEOWNER = (
     "You are answering questions about HOA community rules. "
@@ -19,6 +28,7 @@ _SYSTEM_PROMPT_HOMEOWNER = (
     "When rules conflict across governance levels, apply the preemption hierarchy: "
     "state law overrides county ordinance, county ordinance overrides community rules. "
     "Identify and communicate the controlling rule clearly."
+    + _CITATION_CONSTRAINT
 )
 
 _SYSTEM_PROMPT_BOARD = (
@@ -33,6 +43,7 @@ _SYSTEM_PROMPT_BOARD = (
     "identify the controlling authority: state law overrides county ordinance, "
     "county ordinance overrides community rules. "
     "Never fabricate rules. If facts are insufficient, state that clearly."
+    + _CITATION_CONSTRAINT
 )
 
 
@@ -41,15 +52,17 @@ async def format_homeowner_response_impl(
     compliance_facts: str,
     community_id: int,
     query_source: str = "homeowner",
+    sub_queries: list[str] | None = None,
 ) -> HomeownerResponse:
     """
     Shape governance facts into a formatted response using the LLM.
-    Tone is controlled by query_source: 'homeowner' is warm and advisory,
-    'board' is factual and citation-focused.
-    Never queries documents or the database — receives facts as input only.
+    Runs Gates 2 and 3 of the accuracy pipeline:
+      Gate 2 — constrained prompts prevent citation fabrication at generation time.
+      Gate 3 — post-synthesis grounding check; retries once on failure; adds
+               disclaimer if retry still contains ungrounded citations.
     """
     try:
-        return await _format_response(query, compliance_facts, community_id, query_source)
+        return await _format_response(query, compliance_facts, community_id, query_source, sub_queries or [])
     except OllamaUnavailableError as exc:
         raise RuntimeError(f"LLM unavailable — check LLM_PROVIDER and connectivity: {exc}") from exc
     except Exception as exc:
@@ -63,9 +76,12 @@ async def _format_response(
     compliance_facts: str,
     community_id: int,
     query_source: str,
+    sub_queries: list[str],
 ) -> HomeownerResponse:
     from app.config import settings
     from app.services.llm import LLMClient
+    import logging
+    logger = logging.getLogger(__name__)
 
     facts = GovernanceSearchResult.model_validate_json(compliance_facts)
     is_board = query_source == "board"
@@ -92,23 +108,65 @@ async def _format_response(
         for item in facts.results
     )
 
+    if len(sub_queries) > 1:
+        sub_query_context = (
+            f"\nThis question was decomposed into {len(sub_queries)} focused searches:\n"
+            + "\n".join(f"  {i+1}. {q}" for i, q in enumerate(sub_queries))
+            + "\nAddress all parts of the original question. Group related answers. "
+            "For any part with no supporting facts, say so explicitly.\n"
+        )
+    else:
+        sub_query_context = ""
+
     llm = LLMClient()
     max_tokens = (
         settings.max_tokens_board_response if is_board else settings.max_tokens_customer_service
     )
+
+    # Build user message once — reused in retry conversation
+    user_message_content = (
+        f"{question_label}: {query}\n"
+        f"{sub_query_context}\n"
+        f"Compliance facts retrieved:\n{facts_text}"
+    )
+
     response_text = await llm.complete(
         system=system_prompt,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"{question_label}: {query}\n\n"
-                    f"Compliance facts retrieved:\n{facts_text}"
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": user_message_content}],
         max_tokens=max_tokens,
     )
+
+    # Gate 3: citation grounding check — verify all cited sections exist in sources.
+    ungrounded, is_suspect = check_citation_grounding(response_text, compliance_facts)
+
+    if is_suspect:
+        logger.warning(
+            "Gate 3: %d ungrounded citations %s — retrying synthesis",
+            len(ungrounded), ungrounded,
+        )
+        response_text = await llm.complete(
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_message_content},
+                {"role": "assistant", "content": response_text},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your response cited {', '.join(ungrounded)} which do not appear "
+                        "in the provided Compliance facts. Please regenerate your response "
+                        "citing only sections and rules explicitly present in the sources above. "
+                        "For any part of the question you cannot answer from the sources, "
+                        "say so clearly rather than inferring."
+                    ),
+                },
+            ],
+            max_tokens=max_tokens,
+        )
+
+        _, still_suspect = check_citation_grounding(response_text, compliance_facts)
+        if still_suspect:
+            logger.warning("Gate 3: retry still has ungrounded citations — appending disclaimer")
+            response_text += UNVERIFIED_DISCLAIMER
 
     sources = [
         f"{item.document_title}, {item.section_ref}"
@@ -118,6 +176,6 @@ async def _format_response(
     return HomeownerResponse(
         response_text=response_text,
         sources_cited=list(dict.fromkeys(sources)),  # deduplicate, preserve order
-        alternatives_suggested=False,   # TODO: detect from LLM output
+        alternatives_suggested=False,
         escalation_recommended=False,
     )

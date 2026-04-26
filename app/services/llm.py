@@ -35,6 +35,43 @@ class LLMClient:
             return await self._claude_complete(system, messages, max_tokens)
         return await self._ollama_complete(system, messages, max_tokens)
 
+    async def decompose_query(self, query: str) -> list[str]:
+        """
+        Decompose a user query into focused search terms for vector retrieval.
+        Always uses Ollama regardless of LLM_PROVIDER.
+        Falls back to [query] on Ollama unavailability or unparseable output.
+        """
+        import json as _json
+        try:
+            raw = await self._ollama_complete(
+                system=(
+                    "You extract search queries from user questions for an HOA rules database. "
+                    "Return ONLY a JSON array of short search queries (3-8 words each). "
+                    "Each query must be independently searchable in a legal document. "
+                    "Maximum 6 queries. No explanation, no markdown, only the JSON array.\n"
+                    "Example input: 'Can I park my boat here and also what are the quiet hours?'\n"
+                    'Example output: ["vehicle parking rules", "boat storage restrictions", "quiet hours noise rules"]'
+                ),
+                messages=[{"role": "user", "content": query}],
+                max_tokens=150,
+            )
+            # Strip markdown code fences if the model wraps output
+            cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            parsed = _json.loads(cleaned)
+            if isinstance(parsed, list) and parsed and all(isinstance(q, str) for q in parsed):
+                sub_queries = [q.strip() for q in parsed[:6] if q.strip()]
+                logger.info("Query decomposed into %d sub-queries: %s", len(sub_queries), sub_queries)
+                return sub_queries
+            logger.warning("Query decomposition returned unexpected shape — using original query")
+        except OllamaUnavailableError:
+            logger.warning("Ollama unavailable for query decomposition — using original query")
+        except Exception as exc:
+            logger.warning(
+                "Query decomposition failed (%s: %s) — using original query",
+                type(exc).__name__, exc,
+            )
+        return [query]
+
     async def complete_ocr_cleanup(self, raw_text: str) -> str:
         """OCR cleanup always uses Ollama regardless of LLM_PROVIDER."""
         return await self._ollama_complete(

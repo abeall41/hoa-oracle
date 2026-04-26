@@ -86,9 +86,10 @@ class CompareResult(BaseModel):
 
 class FormatHomeownerResponseInput(BaseModel):
     query: str
-    compliance_facts: str   # JSON-serialized GovernanceSearchResult
-    community_id: int       # knowledge_tiers.id — for community name/context only
-    query_source: str = "homeowner"  # 'homeowner' | 'board' — controls response tone
+    compliance_facts: str        # JSON-serialized GovernanceSearchResult
+    community_id: int            # knowledge_tiers.id — for community name/context only
+    query_source: str = "homeowner"   # 'homeowner' | 'board' — controls response tone
+    sub_queries: list[str] = []  # decomposed search queries that produced compliance_facts
 
 
 class HomeownerResponse(BaseModel):

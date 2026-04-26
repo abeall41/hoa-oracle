@@ -22,6 +22,7 @@ async def format_homeowner_response(
     compliance_facts: str,
     community_id: int,
     query_source: str = "homeowner",
+    sub_queries: list[str] | None = None,
 ) -> dict:
     """
     Takes raw compliance facts from governance-mcp and shapes them into a formatted
@@ -37,17 +38,23 @@ async def format_homeowner_response(
     hierarchy in both modes: state law overrides county ordinance, county ordinance
     overrides community rules.
 
+    When sub_queries is provided, compliance_facts contains merged results from
+    multiple focused searches derived from the original query. Address all parts
+    of the original question. Group related answers. For any part with no supporting
+    facts, say so explicitly rather than guessing.
+
     Never fabricate rules. If compliance_facts are empty or insufficient, states
     that clearly rather than guessing.
 
     Args:
-        query: Original question.
+        query: Original question (may be multi-part or conversational).
         compliance_facts: JSON-serialized GovernanceSearchResult from governance-mcp.
         community_id: knowledge_tiers.id — for community name/context only.
         query_source: 'homeowner' (default) or 'board' — controls response tone.
+        sub_queries: Focused search queries derived from the original query.
     """
     result = await fhr_mod.format_homeowner_response_impl(
-        query, compliance_facts, community_id, query_source
+        query, compliance_facts, community_id, query_source, sub_queries or []
     )
     return result.model_dump()
 
