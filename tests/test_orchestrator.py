@@ -36,25 +36,36 @@ class TestRouteQuery:
         mock_cs.assert_called_once()
         assert result["response_text"] == "Here is your answer."
 
-    async def test_board_query_calls_governance_only(self, mocker):
-        """Board path: governance only, no customer-service."""
+    async def test_board_query_calls_both_agents_with_board_source(self, mocker):
+        """Board path: governance first, then customer-service with query_source='board'."""
         mock_governance = AsyncMock(return_value={
             "results": [], "query": "parking", "community_id": 3, "tiers_searched": []
         })
-        mock_cs = AsyncMock()
+        mock_cs = AsyncMock(return_value={
+            "response_text": "Rule citation details.",
+            "sources_cited": [],
+            "alternatives_suggested": False,
+            "escalation_recommended": False,
+        })
         mocker.patch("app.orchestrator.router.invoke_governance_tool", mock_governance)
         mocker.patch("app.orchestrator.router.invoke_customer_service_tool", mock_cs)
 
         from app.orchestrator.router import route_query
-        await route_query(
+        result = await route_query(
             query="What are the parking rules?",
             query_source="board",
             community_tier_id=3,
             session_id="test-session",
         )
 
-        mock_governance.assert_called_once()
-        mock_cs.assert_not_called()
+        mock_governance.assert_called_once_with("search_community_rules", {
+            "query": "What are the parking rules?",
+            "community_id": 3,
+        })
+        cs_call_args = mock_cs.call_args
+        assert cs_call_args[0][0] == "format_homeowner_response"
+        assert cs_call_args[0][1]["query_source"] == "board"
+        assert result["response_text"] == "Rule citation details."
 
     async def test_unknown_query_source_raises(self):
         from app.orchestrator.router import route_query

@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     # Token budgets
     max_tokens_governance: int = 1500
-    max_tokens_customer_service: int = 800
+    max_tokens_customer_service: int = 800   # homeowner responses — concise, warm
+    max_tokens_board_response: int = 2000    # board responses — full citations, detailed
     max_tokens_ocr_cleanup: int = 500
 
     # OCR

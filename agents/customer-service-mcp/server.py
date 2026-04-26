@@ -18,30 +18,37 @@ mcp = FastMCP("customer-service-mcp")
 
 @mcp.tool()
 async def format_homeowner_response(
-    query: str, compliance_facts: str, community_id: int
+    query: str,
+    compliance_facts: str,
+    community_id: int,
+    query_source: str = "homeowner",
 ) -> dict:
     """
-    Takes raw compliance facts from governance-mcp and shapes them into a warm,
-    clear, homeowner-appropriate response.
+    Takes raw compliance facts from governance-mcp and shapes them into a formatted
+    response appropriate for the caller.
 
-    Tone: respectful, helpful, never condescending. Acknowledge the homeowner's
-    intent before delivering any constraint. Where a rule says 'no', suggest
-    compliant alternatives where possible.
+    query_source controls tone:
+      - 'homeowner': warm, empathetic, suggests alternatives, recommends escalation
+        when uncertain. Acknowledges intent before stating constraints.
+      - 'board': factual, direct, citation-heavy. Identifies the controlling
+        authority when rules conflict across governance levels.
 
     When compliance_facts contains potential_conflicts=true, apply the preemption
-    hierarchy: state law overrides county ordinance, county ordinance overrides
-    community rules. Identify the controlling rule and communicate the conflict
-    clearly without confusing the homeowner.
+    hierarchy in both modes: state law overrides county ordinance, county ordinance
+    overrides community rules.
 
-    Never fabricate rules. If compliance_facts are empty or insufficient, say so
-    clearly and suggest contacting the board.
+    Never fabricate rules. If compliance_facts are empty or insufficient, states
+    that clearly rather than guessing.
 
     Args:
-        query: Original homeowner question.
+        query: Original question.
         compliance_facts: JSON-serialized GovernanceSearchResult from governance-mcp.
         community_id: knowledge_tiers.id — for community name/context only.
+        query_source: 'homeowner' (default) or 'board' — controls response tone.
     """
-    result = await fhr_mod.format_homeowner_response_impl(query, compliance_facts, community_id)
+    result = await fhr_mod.format_homeowner_response_impl(
+        query, compliance_facts, community_id, query_source
+    )
     return result.model_dump()
 
 
