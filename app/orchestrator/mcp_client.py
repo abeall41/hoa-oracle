@@ -28,6 +28,10 @@ async def _invoke_tool(server_script: str, tool_name: str, arguments: dict) -> d
             result = await session.call_tool(tool_name, arguments=arguments)
             if not result.content:
                 raise MCPToolError(f"Tool {tool_name} returned no content")
+            if result.isError:
+                raise MCPToolError(
+                    f"Tool {tool_name} raised an error: {result.content[0].text}"
+                )
             return json.loads(result.content[0].text)
 
 
