@@ -14,23 +14,39 @@ class OCRResult:
         self.ocr_applied = ocr_applied
 
 
+_MIN_CHARS_PER_PAGE = 200  # below this average => treat as scanned (marginal stamps only)
+
+
 async def extract_text_from_pdf(file_bytes: bytes) -> OCRResult:
     """
     Extract text from a PDF.
-    Tries the text layer first (PyMuPDF); falls back to Tesseract OCR if no text found.
+    Tries the text layer first (PyMuPDF); falls back to Tesseract OCR when:
+      - no text layer is present, OR
+      - average chars per page is below _MIN_CHARS_PER_PAGE (indicates only marginal
+        stamps or headers are embedded, while actual content is a scanned image).
     If Tesseract confidence < settings.ocr_confidence_threshold, runs Ollama cleanup.
     If Ollama is unavailable, logs a warning and returns raw Tesseract output.
     """
     import fitz  # PyMuPDF
 
     doc = fitz.open(stream=file_bytes, filetype="pdf")
+    num_pages = doc.page_count or 1
     text_layers = [page.get_text() for page in doc]
     combined = "\n".join(text_layers).strip()
 
-    if combined:
+    avg_chars = len(combined) / num_pages
+    if combined and avg_chars >= _MIN_CHARS_PER_PAGE:
         return OCRResult(text=combined, confidence=1.0, ocr_applied=False)
 
-    # No text layer — fall back to Tesseract
+    if combined:
+        logger.info(
+            "PDF text layer present but sparse (%.0f avg chars/page < %d threshold) — "
+            "falling back to Tesseract OCR",
+            avg_chars,
+            _MIN_CHARS_PER_PAGE,
+        )
+
+    # No meaningful text layer — fall back to Tesseract
     return await _ocr_with_tesseract(file_bytes)
 
 
