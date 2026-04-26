@@ -66,3 +66,19 @@ async def get_document(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
     return DocumentSummary(**dict(row))
+
+
+@router.get("/{document_id}/text")
+async def get_document_text(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the raw extracted text for a document. Used by the UI text viewer."""
+    result = await db.execute(
+        select(Document.id, Document.title, Document.raw_text)
+        .where(Document.id == document_id)
+    )
+    row = result.mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    return {"id": row["id"], "title": row["title"], "raw_text": row["raw_text"] or ""}
